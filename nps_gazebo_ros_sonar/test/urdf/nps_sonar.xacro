@@ -71,16 +71,22 @@
       </ray>
 
         <plugin name="nps_gazebo_ros_sonar_plugin" filename="libnps_gazebo_ros_block_laser.so">
-          <alwaysOn>true</alwaysOn>
-          <updateRate>30.0</updateRate>
+          <robotNamespace>${namespace}</robotNamespace>
+          <frameName>${namespace}/${topic}${suffix}_link</frameName>
+          <topicName>${topic}${suffix}_lidar_pointcloud</topicName>
+          <sonarTopicName>${topic}${suffix}_sonar</sonarTopicName>
+          <gaussianNoise>0</gaussianNoise>
+          <hokuyoMinIntensity>101</hokuyoMinIntensity>
+          <updateRate>0</updateRate>
+<!--
           <linkName>${namespace}/nps_sonar${suffix}_link</linkName>
-          <frameName>${namespace}/nps_sonar${suffix}_link</frameName>
           <cloudTopicName>${topic}${suffix}_cloud</cloudTopicName>
           <imageTopicName>${topic}${suffix}_image</imageTopicName>
           <imageCameraInfoTopicName>${topic}${suffix}_image_camera_info</imageCameraInfoTopicName>
           <horizontalMinAngle>-0.39269875</horizontalMinAngle>
           <horizontalMaxAngle>0.39269875</horizontalMaxAngle>
           <imageOutputDir>/tmp</imageOutputDir>
+-->
 
         </plugin>
     </sensor>

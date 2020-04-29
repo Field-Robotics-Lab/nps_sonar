@@ -19,11 +19,15 @@
  * Author: Nathan Koenig
  * Date: 01 Feb 2007
  */
+/*
+ * Desc: ros sonar controller.
+ * Author: Bruce Allen
+ * Date: 01 May 2020
+ */
 
 #include <algorithm>
 #include <assert.h>
 
-#include <gazebo_plugins/gazebo_ros_block_laser.h>
 #include <gazebo_plugins/gazebo_ros_utils.h>
 
 #include <gazebo/physics/World.hh>
@@ -41,22 +45,24 @@
 
 #include <tf/tf.h>
 
+#include "gazebo_plugins/nps_gazebo_ros_sonar.h"
+
 #define EPSILON_DIFF 0.000001
 
 namespace gazebo
 {
 // Register this plugin with the simulator
-GZ_REGISTER_SENSOR_PLUGIN(GazeboRosBlockLaser)
+GZ_REGISTER_SENSOR_PLUGIN(NpsGazeboRosSonar)
 
 ////////////////////////////////////////////////////////////////////////////////
 // Constructor
-GazeboRosBlockLaser::GazeboRosBlockLaser()
+NpsGazeboRosSonar::NpsGazeboRosSonar()
 {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // Destructor
-GazeboRosBlockLaser::~GazeboRosBlockLaser()
+NpsGazeboRosSonar::~NpsGazeboRosSonar()
 {
   ////////////////////////////////////////////////////////////////////////////////
   // Finalize the controller / Custom Callback Queue
@@ -70,7 +76,7 @@ GazeboRosBlockLaser::~GazeboRosBlockLaser()
 
 ////////////////////////////////////////////////////////////////////////////////
 // Load the controller
-void GazeboRosBlockLaser::Load(sensors::SensorPtr _parent, sdf::ElementPtr _sdf)
+void NpsGazeboRosSonar::Load(sensors::SensorPtr _parent, sdf::ElementPtr _sdf)
 {
   // load plugin
   RayPlugin::Load(_parent, _sdf);
@@ -95,7 +101,7 @@ void GazeboRosBlockLaser::Load(sensors::SensorPtr _parent, sdf::ElementPtr _sdf)
   this->parent_ray_sensor_ = dynamic_pointer_cast<sensors::RaySensor>(this->parent_sensor_);
 
   if (!this->parent_ray_sensor_)
-    gzthrow("GazeboRosBlockLaser controller requires a Ray Sensor as its parent");
+    gzthrow("NpsGazeboRosSonar controller requires a Ray Sensor as its parent");
 
   this->robot_namespace_ = "";
   if (_sdf->HasElement("robotNamespace"))
@@ -103,7 +109,7 @@ void GazeboRosBlockLaser::Load(sensors::SensorPtr _parent, sdf::ElementPtr _sdf)
 
   if (!_sdf->HasElement("frameName"))
   {
-    ROS_INFO_NAMED("block_laser", "Block laser plugin missing <frameName>, defaults to /world");
+    ROS_INFO_NAMED("sonar", "Sonar plugin missing <frameName>, defaults to /world");
     this->frame_name_ = "/world";
   }
   else
@@ -111,7 +117,7 @@ void GazeboRosBlockLaser::Load(sensors::SensorPtr _parent, sdf::ElementPtr _sdf)
 
   if (!_sdf->HasElement("topicName"))
   {
-    ROS_INFO_NAMED("block_laser", "Block laser plugin missing <topicName>, defaults to /world");
+    ROS_INFO_NAMED("sonar", "Sonar plugin missing <topicName>, defaults to /world");
     this->topic_name_ = "/world";
   }
   else
@@ -119,7 +125,7 @@ void GazeboRosBlockLaser::Load(sensors::SensorPtr _parent, sdf::ElementPtr _sdf)
 
   if (!_sdf->HasElement("gaussianNoise"))
   {
-    ROS_INFO_NAMED("block_laser", "Block laser plugin missing <gaussianNoise>, defaults to 0.0");
+    ROS_INFO_NAMED("sonar", "Sonar plugin missing <gaussianNoise>, defaults to 0.0");
     this->gaussian_noise_ = 0;
   }
   else
@@ -127,17 +133,17 @@ void GazeboRosBlockLaser::Load(sensors::SensorPtr _parent, sdf::ElementPtr _sdf)
 
   if (!_sdf->HasElement("hokuyoMinIntensity"))
   {
-    ROS_INFO_NAMED("block_laser", "Block laser plugin missing <hokuyoMinIntensity>, defaults to 101");
+    ROS_INFO_NAMED("sonar", "Sonar plugin missing <hokuyoMinIntensity>, defaults to 101");
     this->hokuyo_min_intensity_ = 101;
   }
   else
     this->hokuyo_min_intensity_ = _sdf->GetElement("hokuyoMinIntensity")->Get<double>();
 
-  ROS_DEBUG_NAMED("block_laser", "gazebo_ros_laser plugin should set minimum intensity to %f due to cutoff in hokuyo filters." , this->hokuyo_min_intensity_);
+  ROS_DEBUG_NAMED("sonar", "gazebo_ros_laser plugin should set minimum intensity to %f due to cutoff in hokuyo filters." , this->hokuyo_min_intensity_);
 
   if (!_sdf->HasElement("updateRate"))
   {
-    ROS_INFO_NAMED("block_laser", "Block laser plugin missing <updateRate>, defaults to 0");
+    ROS_INFO_NAMED("sonar", "Sonar plugin missing <updateRate>, defaults to 0");
     this->update_rate_ = 0;
   }
   else
@@ -150,7 +156,7 @@ void GazeboRosBlockLaser::Load(sensors::SensorPtr _parent, sdf::ElementPtr _sdf)
   // Make sure the ROS node for Gazebo has already been initialized
   if (!ros::isInitialized())
   {
-    ROS_FATAL_STREAM_NAMED("block_laser", "A ROS node for Gazebo has not been initialized, unable to load plugin. "
+    ROS_FATAL_STREAM_NAMED("sonar", "A ROS node for Gazebo has not been initialized, unable to load plugin. "
       << "Load the Gazebo system plugin 'libgazebo_ros_api_plugin.so' in the gazebo_ros package)");
     return;
   }
@@ -172,8 +178,8 @@ void GazeboRosBlockLaser::Load(sensors::SensorPtr _parent, sdf::ElementPtr _sdf)
     // Custom Callback Queue
     ros::AdvertiseOptions ao = ros::AdvertiseOptions::create<sensor_msgs::PointCloud>(
       this->topic_name_,1,
-      boost::bind( &GazeboRosBlockLaser::LaserConnect,this),
-      boost::bind( &GazeboRosBlockLaser::LaserDisconnect,this), ros::VoidPtr(), &this->laser_queue_);
+      boost::bind( &NpsGazeboRosSonar::LaserConnect,this),
+      boost::bind( &NpsGazeboRosSonar::LaserDisconnect,this), ros::VoidPtr(), &this->laser_queue_);
     this->pub_ = this->rosnode_->advertise(ao);
   }
 
@@ -183,20 +189,20 @@ void GazeboRosBlockLaser::Load(sensors::SensorPtr _parent, sdf::ElementPtr _sdf)
   // sensor generation off by default
   this->parent_ray_sensor_->SetActive(false);
   // start custom queue for laser
-  this->callback_laser_queue_thread_ = boost::thread( boost::bind( &GazeboRosBlockLaser::LaserQueueThread,this ) );
+  this->callback_laser_queue_thread_ = boost::thread( boost::bind( &NpsGazeboRosSonar::LaserQueueThread,this ) );
 
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // Increment count
-void GazeboRosBlockLaser::LaserConnect()
+void NpsGazeboRosSonar::LaserConnect()
 {
   this->laser_connect_count_++;
   this->parent_ray_sensor_->SetActive(true);
 }
 ////////////////////////////////////////////////////////////////////////////////
 // Decrement count
-void GazeboRosBlockLaser::LaserDisconnect()
+void NpsGazeboRosSonar::LaserDisconnect()
 {
   this->laser_connect_count_--;
 
@@ -206,14 +212,14 @@ void GazeboRosBlockLaser::LaserDisconnect()
 
 ////////////////////////////////////////////////////////////////////////////////
 // Update the controller
-void GazeboRosBlockLaser::OnNewLaserScans()
+void NpsGazeboRosSonar::OnNewLaserScans()
 {
   if (this->topic_name_ != "")
   {
     common::Time sensor_update_time = this->parent_sensor_->LastUpdateTime();
     if (sensor_update_time < last_update_time_)
     {
-        ROS_WARN_NAMED("block_laser", "Negative sensor update time difference detected.");
+        ROS_WARN_NAMED("sonar", "Negative sensor update time difference detected.");
         last_update_time_ = sensor_update_time;
     }
 
@@ -225,13 +231,13 @@ void GazeboRosBlockLaser::OnNewLaserScans()
   }
   else
   {
-    ROS_INFO_NAMED("block_laser", "gazebo_ros_block_laser topic name not set");
+    ROS_INFO_NAMED("sonar", "nps_gazebo_ros_sonar topic name not set");
   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // Put laser data to the interface
-void GazeboRosBlockLaser::PutLaserData(common::Time &_updateTime)
+void NpsGazeboRosSonar::PutLaserData(common::Time &_updateTime)
 {
   int i, hja, hjb;
   int j, vja, vjb;
@@ -320,7 +326,7 @@ void GazeboRosBlockLaser::PutLaserData(common::Time &_updateTime)
                         this->parent_ray_sensor_->LaserShape()->GetRetro(j3) +
                         this->parent_ray_sensor_->LaserShape()->GetRetro(j4));
 
-      // std::cout << " block debug "
+      // std::cout << " sonar debug "
       //           << "  ij("<<i<<","<<j<<")"
       //           << "  j1234("<<j1<<","<<j2<<","<<j3<<","<<j4<<")"
       //           << "  r1234("<<r1<<","<<r2<<","<<r3<<","<<r4<<")"
@@ -374,7 +380,7 @@ void GazeboRosBlockLaser::PutLaserData(common::Time &_updateTime)
 
 //////////////////////////////////////////////////////////////////////////////
 // Utility for adding noise
-double GazeboRosBlockLaser::GaussianKernel(double mu,double sigma)
+double NpsGazeboRosSonar::GaussianKernel(double mu,double sigma)
 {
   // using Box-Muller transform to generate two independent standard normally disbributed normal variables
   // see wikipedia
@@ -391,7 +397,7 @@ double GazeboRosBlockLaser::GaussianKernel(double mu,double sigma)
 // Custom Callback Queue
 ////////////////////////////////////////////////////////////////////////////////
 // custom callback queue thread
-void GazeboRosBlockLaser::LaserQueueThread()
+void NpsGazeboRosSonar::LaserQueueThread()
 {
   static const double timeout = 0.01;
 
@@ -401,7 +407,7 @@ void GazeboRosBlockLaser::LaserQueueThread()
   }
 }
 
-void GazeboRosBlockLaser::OnStats( const boost::shared_ptr<msgs::WorldStatistics const> &_msg)
+void NpsGazeboRosSonar::OnStats( const boost::shared_ptr<msgs::WorldStatistics const> &_msg)
 {
   this->sim_time_  = msgs::Convert( _msg->sim_time() );
 

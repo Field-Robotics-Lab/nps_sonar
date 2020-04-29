@@ -16,6 +16,7 @@ find_package(catkin REQUIRED COMPONENTS
 find_package(gazebo REQUIRED)
 find_package(OpenCV)
 include_directories(
+  include
   ${OpenCV_INCLUDE_DIRS}
   ${Boost_INCLUDE_DIR} 
   ${catkin_INCLUDE_DIRS} 
@@ -30,8 +31,8 @@ DEPENDS
 )
 
 ## Plugins
-add_library(nps_gazebo_ros_block_laser src/gazebo_ros_block_laser.cpp)
-target_link_libraries(nps_gazebo_ros_block_laser RayPlugin ${catkin_LIBRARIES})
+add_library(nps_gazebo_ros_sonar src/nps_gazebo_ros_sonar.cpp)
+target_link_libraries(nps_gazebo_ros_sonar RayPlugin ${catkin_LIBRARIES})
 
 #target_link_libraries(gtri_based_fls_plugin
 #  cloud_to_image color_maps

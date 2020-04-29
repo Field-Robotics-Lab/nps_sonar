@@ -19,9 +19,14 @@
  * Author: Nathan Koenig
  * Date: 01 Feb 2007
  */
+/*
+ * Desc: ros sonar controller.
+ * Author: Bruce Allen
+ * Date: 01 May 2020
+ */
 
-#ifndef GAZEBO_ROS_BLOCK_LASER_HH
-#define GAZEBO_ROS_BLOCK_LASER_HH
+#ifndef NPS_GAZEBO_ROS_SONAR_H
+#define NPS_GAZEBO_ROS_SONAR_H
 
 // Custom Callback Queue
 #include <ros/ros.h>
@@ -46,14 +51,14 @@
 namespace gazebo
 {
 
-  class GazeboRosBlockLaser : public RayPlugin
+  class NpsGazeboRosSonar: public RayPlugin
   {
     /// \brief Constructor
     /// \param parent The parent entity, must be a Model or a Sensor
-    public: GazeboRosBlockLaser();
+    public: NpsGazeboRosSonar();
 
     /// \brief Destructor
-    public: ~GazeboRosBlockLaser();
+    public: ~NpsGazeboRosSonar();
 
     /// \brief Load the plugin
     /// \param take in SDF root element

@@ -38,47 +38,23 @@
 
     <selfCollide>false</selfCollide>
  
-    <sensor type="ray" name="ray_sensor">
+    <sensor type="sonar" name="sonar_sensor">
       <always_on>true</always_on>
       <update_rate>15.0</update_rate>
       <pose>0 0 0 0 0 0</pose>
-      <visualize>false</visualize>
-      <ray>
-        <scan>
-          <horizontal>
-            <samples>280</samples>
-            <resolution>1</resolution>            
-            <min_angle>-0.39269875</min_angle>
-            <max_angle>0.39269875</max_angle>                        
-            <!-- 130 degree
-                 <min_angle>-1.134464014</min_angle>
-                 <max_angle>1.134464014</max_angle>
-            -->
-          </horizontal>        
-          <vertical>            
-            <samples>70</samples>
-            <resolution>1</resolution>            
-            <min_angle>-0.174532778</min_angle>
-            <max_angle>0.174532778</max_angle>                        
-          </vertical>          
-        </scan>
+      <visualize>true</visualize>
+      <sonar>
+        <geometry>cone</geometry>
+        <min>0.1</min>
+        <max>10</max>
+        <radius>1</radius>
+      </sonar>
 
-        <range>
-          <min>0.1</min>
-          <max>10.0</max>
-          <resolution>0.01</resolution>
-        </range>
-      </ray>
-
-        <plugin name="nps_gazebo_ros_sonar_plugin" filename="libnps_gazebo_ros_sonar.so">
-          <robotNamespace>${namespace}</robotNamespace>
-          <frameName>${namespace}/${topic}${suffix}_link</frameName>
-          <topicName>${topic}${suffix}_lidar_pointcloud</topicName>
-          <sonarTopicName>${topic}${suffix}_sonar</sonarTopicName>
-          <gaussianNoise>0</gaussianNoise>
-          <hokuyoMinIntensity>101</hokuyoMinIntensity>
-          <updateRate>0</updateRate>
-        </plugin>
+      <plugin name="nps_gazebo_ros_sonar_plugin" filename="libnps_gazebo_ros_sonar.so">
+        <robotNamespace>${namespace}</robotNamespace>
+        <frameName>${namespace}/${topic}${suffix}_link</frameName>
+        <topicName>${topic}${suffix}_lidar_pointcloud</topicName>
+      </plugin>
     </sensor>
   </gazebo>
   </xacro:macro>

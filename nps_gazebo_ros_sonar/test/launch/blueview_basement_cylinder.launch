@@ -16,7 +16,9 @@
 
   <!-- RViz cloud view -->
 
+<!--
   <node type="rviz" name="rviz" pkg="rviz" args="-d $(find nps_sonar)/test/rviz/standalone.rviz" />
+-->
 
 </launch>
 

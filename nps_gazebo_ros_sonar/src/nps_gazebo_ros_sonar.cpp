@@ -18,6 +18,7 @@
 #include <gazebo/sensors/SonarSensor.hh>
 #include <gazebo/sensors/SensorTypes.hh>
 #include <gazebo/transport/Node.hh>
+#include <gazebo/msgs/MessageTypes.hh>
 
 #include <geometry_msgs/Point32.h>
 #include <sensor_msgs/ChannelFloat32.h>
@@ -25,8 +26,6 @@
 #include <tf/tf.h>
 
 #include "gazebo_plugins/nps_gazebo_ros_sonar.h"
-
-//#define EPSILON_DIFF 0.000001
 
 namespace gazebo
 {
@@ -45,10 +44,10 @@ NpsGazeboRosSonar::~NpsGazeboRosSonar()
 {
   ////////////////////////////////////////////////////////////////////////////////
   // Finalize the controller / Custom Callback Queue
-  this->sonar_queue_.clear();
-  this->sonar_queue_.disable();
+  this->range_queue_.clear();
+  this->range_queue_.disable();
   this->rosnode_->shutdown();
-  this->callback_sonar_queue_thread_.join();
+  this->callback_range_queue_thread_.join();
 
   delete this->rosnode_;
 }
@@ -73,8 +72,8 @@ void NpsGazeboRosSonar::Load(sensors::SensorPtr _parent, sdf::ElementPtr _sdf)
   last_update_time_ = this->world_->GetSimTime();
 #endif
 
-  this->node_ = transport::NodePtr(new transport::Node());
-  this->node_->Init(worldName);
+  this->gazebo_node_ = transport::NodePtr(new transport::Node());
+  this->gazebo_node_->Init(worldName);
 
   GAZEBO_SENSORS_USING_DYNAMIC_POINTER_CAST;
   this->parent_sonar_sensor_ = dynamic_pointer_cast<sensors::SonarSensor>(this->parent_sensor_);
@@ -102,7 +101,7 @@ void NpsGazeboRosSonar::Load(sensors::SensorPtr _parent, sdf::ElementPtr _sdf)
   else
     this->topic_name_ = _sdf->GetElement("topicName")->Get<std::string>();
 
-  this->range_connect_count_ = 0;
+  this->sonar_connect_count_ = 0;
 
   // persistent fields
   this->range_msg_.header.frame_id = this->frame_name_;
@@ -133,8 +132,8 @@ void NpsGazeboRosSonar::Load(sensors::SensorPtr _parent, sdf::ElementPtr _sdf)
     // Custom Callback Queue
     ros::AdvertiseOptions ao = ros::AdvertiseOptions::create<sensor_msgs::Range>(
       this->topic_name_,1,
-      boost::bind( &NpsGazeboRosSonar::RangeConnect,this),
-      boost::bind( &NpsGazeboRosSonar::RangeDisconnect,this), ros::VoidPtr(), &this->sonar_queue_);
+      boost::bind( &NpsGazeboRosSonar::SonarConnect,this),
+      boost::bind( &NpsGazeboRosSonar::SonarDisconnect,this), ros::VoidPtr(), &this->range_queue_);
     this->pub_ = this->rosnode_->advertise(ao);
   }
 
@@ -144,30 +143,37 @@ void NpsGazeboRosSonar::Load(sensors::SensorPtr _parent, sdf::ElementPtr _sdf)
   // sensor generation off by default
   this->parent_sonar_sensor_->SetActive(false);
   // start custom queue for sonar
-  this->callback_sonar_queue_thread_ = boost::thread( boost::bind( &NpsGazeboRosSonar::SonarQueueThread,this ) );
-
+  this->callback_range_queue_thread_ = boost::thread( boost::bind( &NpsGazeboRosSonar::SonarQueueThread,this ) );
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // Increment count
-void NpsGazeboRosSonar::RangeConnect()
+void NpsGazeboRosSonar::SonarConnect()
 {
-  this->range_connect_count_++;
+  this->sonar_connect_count_++;
+
+  if (this->sonar_connect_count_ == 1)
+    this->sonar_scan_sub_ =
+      this->gazebo_node_->Subscribe(this->parent_sonar_sensor_->Topic(),
+                                    &NpsGazeboRosSonar::OnScan, this);
   this->parent_sonar_sensor_->SetActive(true);
 }
 ////////////////////////////////////////////////////////////////////////////////
 // Decrement count
-void NpsGazeboRosSonar::RangeDisconnect()
+void NpsGazeboRosSonar::SonarDisconnect()
 {
-  this->range_connect_count_--;
+  this->sonar_connect_count_--;
 
-  if (this->range_connect_count_ == 0)
+  if (this->sonar_connect_count_ == 0)
+  {
     this->parent_sonar_sensor_->SetActive(false);
+    this->sonar_scan_sub_.reset();
+  }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // Update the controller
-void NpsGazeboRosSonar::OnNewSonarScans()
+void NpsGazeboRosSonar::OnScan(ConstSonarStampedPtr &_msg)
 {
   if (this->topic_name_ != "")
   {
@@ -212,7 +218,7 @@ void NpsGazeboRosSonar::PutSonarData(common::Time &_updateTime)
     this->parent_sonar_sensor_->SetActive(true);
 
     // send data out via ros message
-    if (this->range_connect_count_ > 0 && this->topic_name_ != "")
+    if (this->sonar_connect_count_ > 0)
         this->pub_.publish(this->range_msg_);
   }
 }
@@ -222,11 +228,12 @@ void NpsGazeboRosSonar::PutSonarData(common::Time &_updateTime)
 // custom callback queue thread
 void NpsGazeboRosSonar::SonarQueueThread()
 {
-  static const double timeout = 0.01;
+  static const double timeout = 2.0;
+//  static const double timeout = 0.01;
 
   while (this->rosnode_->ok())
   {
-    this->sonar_queue_.callAvailable(ros::WallDuration(timeout));
+    this->range_queue_.callAvailable(ros::WallDuration(timeout));
   }
 }
 
@@ -238,5 +245,5 @@ void NpsGazeboRosSonar::OnStats( const boost::shared_ptr<msgs::WorldStatistics c
   pose.Pos().X() = 0.5*sin(0.01*this->sim_time_.Double());
   gzdbg << "plugin simTime [" << this->sim_time_.Double() << "] update pose [" << pose.Pos().X() << "]\n";
 }
-} // namespace
+}
 

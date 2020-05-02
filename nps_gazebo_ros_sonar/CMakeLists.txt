@@ -31,15 +31,9 @@ DEPENDS
 )
 
 ## Plugins
-add_library(nps_gazebo_ros_sonar src/nps_gazebo_ros_sonar.cpp)
-target_link_libraries(nps_gazebo_ros_sonar RayPlugin ${catkin_LIBRARIES})
-
-#target_link_libraries(gtri_based_fls_plugin
-#  cloud_to_image color_maps
-#  ${catkin_LIBRARIES} 
-#  ${OpenCV_LIBRARIES}
-#  ${GAZEBO_LIBRARIES}
-#  )
+add_library(nps_gazebo_ros_sonar_plugin src/nps_gazebo_ros_sonar.cpp)
+target_link_libraries(nps_gazebo_ros_sonar_plugin
+                      SonarPlugin ${catkin_LIBRARIES})
 
 # for launch
 install(DIRECTORY launch

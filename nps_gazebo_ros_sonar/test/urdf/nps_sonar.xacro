@@ -41,19 +41,19 @@
     <sensor type="sonar" name="sonar_sensor">
       <always_on>true</always_on>
       <update_rate>15.0</update_rate>
-      <pose>0 0 0 0 0 0</pose>
+      <pose>0 0 0 0 -1.5708 0</pose>
       <visualize>true</visualize>
       <sonar>
         <geometry>cone</geometry>
         <min>0.1</min>
-        <max>10</max>
-        <radius>1</radius>
+        <max>7</max>
+        <radius>0.5</radius>
       </sonar>
 
-      <plugin name="nps_gazebo_ros_sonar_plugin" filename="libnps_gazebo_ros_sonar.so">
+      <plugin name="nps_gazebo_ros_sonar_plugin" filename="libnps_gazebo_ros_sonar_plugin.so">
         <robotNamespace>${namespace}</robotNamespace>
         <frameName>${namespace}/${topic}${suffix}_link</frameName>
-        <topicName>${topic}${suffix}_lidar_pointcloud</topicName>
+        <topicName>${topic}${suffix}_sonar_range</topicName>
       </plugin>
     </sensor>
   </gazebo>

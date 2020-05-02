@@ -44,7 +44,7 @@ namespace gazebo
     public: void Load(sensors::SensorPtr _parent, sdf::ElementPtr _sdf);
 
     /// \brief Update the controller
-    protected: virtual void OnNewSonarScans();
+    private: void OnScan(ConstSonarStampedPtr&_msg);
 
     /// \brief Put sonar data to the ROS topic
     private: void PutSonarData(common::Time &_updateTime);
@@ -52,9 +52,9 @@ namespace gazebo
     private: common::Time last_update_time_;
 
     /// \brief Keep track of number of connctions
-    private: int range_connect_count_;
-    private: void RangeConnect();
-    private: void RangeDisconnect();
+    private: int sonar_connect_count_;
+    private: void SonarConnect();
+    private: void SonarDisconnect();
 
     // \brief Pointer to the model
     private: physics::WorldPtr world_;
@@ -70,6 +70,9 @@ namespace gazebo
     /// \brief ros message
     private: sensor_msgs::Range range_msg_;
 
+    /// \brief Gazebo subscription
+    private: gazebo::transport::SubscriberPtr sonar_scan_sub_;
+
     /// \brief topic name
     private: std::string topic_name_;
 
@@ -83,12 +86,12 @@ namespace gazebo
     private: std::string robot_namespace_;
 
     // Custom Callback Queue
-    private: ros::CallbackQueue sonar_queue_;
+    private: ros::CallbackQueue range_queue_;
     private: void SonarQueueThread();
-    private: boost::thread callback_sonar_queue_thread_;
+    private: boost::thread callback_range_queue_thread_;
 
     // subscribe to world stats
-    private: transport::NodePtr node_;
+    private: transport::NodePtr gazebo_node_;
     private: common::Time sim_time_;
     public: void OnStats( const boost::shared_ptr<msgs::WorldStatistics const> &_msg);
 

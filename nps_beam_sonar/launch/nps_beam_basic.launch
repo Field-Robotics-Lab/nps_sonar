@@ -9,7 +9,7 @@
 
 <!-- nps_beam_robot xacro -->
   <param name="nps_beam_robot"
-         command="$(find xacro)/xacro '$(find nps_uw_sonar_gazebo)/urdf/nps_beam_robot.xacro'"/>
+         command="$(find xacro)/xacro '$(find nps_beam_sonar)/urdf/nps_beam_robot.xacro'"/>
 
 <!-- spawn sonar_single_beam_robot -->
   <node name="urdf_spawner" pkg="gazebo_ros" type="spawn_model"

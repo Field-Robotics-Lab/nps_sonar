@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(nps_uw_sonar_gazebo)
+project(nps_beam_sonar)
 
 find_package(catkin REQUIRED tf)
 

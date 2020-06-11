@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>nps_uw_sonar_gazebo</name>
+  <name>nps_beam_sonar</name>
   <version>0.0.1</version>
   <description>
     NPS Gazebo underwater sensor plugins.

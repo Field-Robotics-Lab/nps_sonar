@@ -2,7 +2,7 @@
 <robot name="nps_beam_robot"
        xmlns:xacro="http://www.ros.org/wiki/xacro">
 
-  <xacro:include filename="$(find nps_uw_sonar_gazebo)/urdf/nps_beam.xacro" />
+  <xacro:include filename="$(find nps_beam_sonar)/urdf/nps_beam.xacro" />
 
   <link name="world"/>
 

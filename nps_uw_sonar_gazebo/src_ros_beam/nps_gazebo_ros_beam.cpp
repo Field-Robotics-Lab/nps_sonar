@@ -250,20 +250,44 @@ void NpsGazeboRosBeam::OnScan(ConstLaserScanStampedPtr &_msg)
 
   // calculate range and intensity from Gazebo array
   float angle = laser_msg.angle_min;
+  float increment = laser_msg.angle_increment;
   float intensity = 0.0;
+  float intensity_ref = 2.6e-16;
+  float absorption = 5e-5;
+  float echo_level = 0.0;
+  float source_level = 120.0;
+  float transmission_loss = 0.0;
+  float target_strength = 10.0;
   float range = laser_msg.range_max - laser_msg.range_min;
   auto range_it = _msg->scan().ranges().begin();
   auto intensity_it = _msg->scan().intensities().begin();
   while (range_it != _msg->scan().ranges().end())
   {
+    // Andi is going to put some code here to implement sonar eqn's.
     // sum of f(intensity, angle)
-    intensity += *range_it * cos(10.0 * angle);
+    intensity += *intensity_it * cos(10.0 * angle);
     // min of range
     range = *range_it < range ? *range_it : range;
+
+    /*
+    // calculate target strength
+
+    target_strength = 10 * log(intensity/intensity_ref)
+ 
+
+    // calculate transmission loss
+    transmission_loss = 20 * log(range) + absorption*range;
+
+
+    // echo level will eventually be used to display intensities in dB on a sonar viewer
+    // calculate echo level
+    echo_level = source_level - 2 * (transmission_loss) + target_strength;
+    */
 
     // next
     ++range_it;
     ++intensity_it;
+    angle = angle + increment;
   }
 
   // store calculated range and intensity

@@ -14,8 +14,8 @@
  * limitations under the License.
  *
 */
-#ifndef NPS_BEAM_SENSOR_HH
-#define NPS_BEAM_SENSOR_HH
+#ifndef _GAZEBO_SENSORS_GPUSONARSENSOR_HH_
+#define _GAZEBO_SENSORS_GPUSONARSENSOR_HH_
 
 #include <memory>
 #include <string>
@@ -25,6 +25,7 @@
 #include <ignition/math/Pose3.hh>
 
 #include "gazebo/rendering/RenderTypes.hh"
+#include "../rendering/GpuSonarRenderTypes.hh"
 #include "gazebo/sensors/Sensor.hh"
 #include "gazebo/transport/TransportTypes.hh"
 #include "gazebo/util/system.hh"
@@ -36,24 +37,24 @@ namespace gazebo
   namespace sensors
   {
     // Forward declare private data pointer.
-    class NpsBeamSensorPrivate;
+    class GpuSonarSensorPrivate;
 
-    /// \class NpsBeamSensor NpsBeamSensor.hh sensors/sensors.hh
+    /// \class GpuSonarSensor GpuSonarSensor.hh sensors/sensors.hh
     /// \addtogroup gazebo_sensors
     /// \{
 
-    /// \brief GPU based laser sensor
+    /// \brief GPU based sonar sensor
     ///
     /// This sensor cast rays into the world, tests for intersections, and
     /// reports the range to the nearest object.  It is used by ranging
-    /// sensor models (e.g., sonars and scanning laser range finders).
-    class GZ_SENSORS_VISIBLE NpsBeamSensor: public Sensor
+    /// sensor models (e.g., sonars and scanning sonar range finders).
+    class GZ_SENSORS_VISIBLE GpuSonarSensor: public Sensor
     {
       /// \brief Constructor
-      public: NpsBeamSensor();
+      public: GpuSonarSensor();
 
       /// \brief Destructor
-      public: virtual ~NpsBeamSensor();
+      public: virtual ~GpuSonarSensor();
 
       /// \brief Load the sensor with SDF parameters
       /// \param[in] _sdf SDF Sensor parameters
@@ -77,9 +78,9 @@ namespace gazebo
       // Documentation inherited
       public: virtual std::string Topic() const;
 
-      /// \brief Returns a pointer to the internally kept rendering::GpuLaser
-      /// \return Pointer to GpuLaser
-      public: rendering::GpuLaserPtr LaserCamera() const;
+      /// \brief Returns a pointer to the internally kept rendering::GpuSonar
+      /// \return Pointer to GpuSonar
+      public: rendering::GpuSonarPtr SonarCamera() const;
 
       /// \brief Get the minimum angle
       /// \return The minimum angle
@@ -215,8 +216,8 @@ namespace gazebo
       /// != ray count, then values are interpolated between rays.
       public: double RangeCountRatio() const;
 
-      /// \brief Get the horizontal field of view of the laser sensor.
-      /// \return The horizontal field of view of the laser sensor.
+      /// \brief Get the horizontal field of view of the sonar sensor.
+      /// \return The horizontal field of view of the sonar sensor.
       public: double HorzFOV() const;
 
       /// \brief Get Cos Horz field-of-view
@@ -239,9 +240,9 @@ namespace gazebo
       /// \return (vertical_max_angle + vertical_min_angle) * 0.5
       public: double VertHalfAngle() const;
 
-      /// \brief Connect to the new laser frame event.
+      /// \brief Connect to the new sonar frame event.
       /// \param[in] _subscriber Event callback.
-      public: event::ConnectionPtr ConnectNewLaserFrame(
+      public: event::ConnectionPtr ConnectNewSonarFrame(
         std::function<void(const float *, unsigned int, unsigned int,
         unsigned int, const std::string &)> _subscriber);
 
@@ -253,7 +254,7 @@ namespace gazebo
 
       /// \internal
       /// \brief Private data pointer.
-      private: std::unique_ptr<NpsBeamSensorPrivate> dataPtr;
+      private: std::unique_ptr<GpuSonarSensorPrivate> dataPtr;
     };
     /// \}
   }

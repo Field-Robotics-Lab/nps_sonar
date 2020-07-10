@@ -14,12 +14,6 @@
  * limitations under the License.
  *
 */
-#ifdef _WIN32
-  // Ensure that Winsock2.h is included before Windows.h, which can get
-  // pulled in by anybody (e.g., Boost).
-  #include <Winsock2.h>
-#endif
-
 #include <boost/algorithm/string.hpp>
 #include <functional>
 #include <ignition/math.hh>
@@ -36,40 +30,41 @@
 #include "gazebo/rendering/Scene.hh"
 #include "gazebo/rendering/RenderingIface.hh"
 #include "gazebo/rendering/RenderEngine.hh"
-#include "gazebo/rendering/GpuLaser.hh"
+//#include "gazebo/rendering/GpuSonar.hh"
+#include "../rendering/GpuSonar.hh"
 
 #include "gazebo/sensors/Noise.hh"
 #include "gazebo/sensors/SensorFactory.hh"
-
-#include "NpsBeamSensorPrivate.hh"
-#include "NpsBeamSensor.hh"
+//#include "gazebo/sensors/GpuSonarSensorPrivate.hh"
+#include "GpuSonarSensorPrivate.hh"
+//#include "gazebo/sensors/GpuSonarSensor.hh"
+#include "GpuSonarSensor.hh"
 
 using namespace gazebo;
 using namespace sensors;
 
-GZ_REGISTER_STATIC_SENSOR("nps_beam", NpsBeamSensor)
+GZ_REGISTER_STATIC_SENSOR("gpu_sonar", GpuSonarSensor)
 
 //////////////////////////////////////////////////
-NpsBeamSensor::NpsBeamSensor()
+GpuSonarSensor::GpuSonarSensor()
 : Sensor(sensors::IMAGE),
-  dataPtr(new NpsBeamSensorPrivate)
+  dataPtr(new GpuSonarSensorPrivate)
 {
-gzwarn << "NpsBeamSensor::NpsBeamSensor\n";
   this->dataPtr->rendered = false;
   this->active = false;
   this->connections.push_back(
       event::Events::ConnectRender(
-        std::bind(&NpsBeamSensor::Render, this)));
+        std::bind(&GpuSonarSensor::Render, this)));
 }
 
 //////////////////////////////////////////////////
-NpsBeamSensor::~NpsBeamSensor()
+GpuSonarSensor::~GpuSonarSensor()
 {
   this->Fini();
 }
 
 //////////////////////////////////////////////////
-std::string NpsBeamSensor::Topic() const
+std::string GpuSonarSensor::Topic() const
 {
   std::string topicName = "~/";
   topicName += this->ParentName() + "/" + this->Name() + "/scan";
@@ -79,16 +74,14 @@ std::string NpsBeamSensor::Topic() const
 }
 
 //////////////////////////////////////////////////
-void NpsBeamSensor::Load(const std::string &_worldName, sdf::ElementPtr _sdf)
+void GpuSonarSensor::Load(const std::string &_worldName, sdf::ElementPtr _sdf)
 {
-gzwarn << "NpsBeamSensor::Load.a\n";
   Sensor::Load(_worldName, _sdf);
 }
 
 //////////////////////////////////////////////////
-void NpsBeamSensor::Load(const std::string &_worldName)
+void GpuSonarSensor::Load(const std::string &_worldName)
 {
-gzwarn << "NpsBeamSensor::Load.b\n";
   Sensor::Load(_worldName);
 
   this->dataPtr->scanPub =
@@ -107,11 +100,14 @@ gzwarn << "NpsBeamSensor::Load.b\n";
 
   if (this->dataPtr->horzRayCount == 0 || this->dataPtr->vertRayCount == 0)
   {
-    gzthrow("NpsBeamSensor: Image has 0 size!");
+    gzthrow("GpuSonarSensor: Image has 0 size!");
   }
 
   this->dataPtr->horzRangeCount = this->RangeCount();
   this->dataPtr->vertRangeCount = this->VerticalRangeCount();
+
+  this->dataPtr->rangeMin = this->RangeMin();
+  this->dataPtr->rangeMax = this->RangeMax();
 
   // Handle noise model settings.
   if (rayElem->HasElement("noise"))
@@ -129,13 +125,12 @@ gzwarn << "NpsBeamSensor::Load.b\n";
 }
 
 //////////////////////////////////////////////////
-void NpsBeamSensor::Init()
+void GpuSonarSensor::Init()
 {
-gzwarn << "NpsBeamSensor::Init\n";
   if (rendering::RenderEngine::Instance()->GetRenderPathType() ==
       rendering::RenderEngine::NONE)
   {
-    gzerr << "Unable to create NpsBeamSensor. Rendering is disabled.\n";
+    gzerr << "Unable to create GpuSonarSensor. Rendering is disabled.\n";
     return;
   }
 
@@ -148,167 +143,176 @@ gzwarn << "NpsBeamSensor::Init\n";
     if (!this->scene)
       this->scene = rendering::create_scene(worldName, false, true);
 
-    this->dataPtr->laserCam = this->scene->CreateGpuLaser(
+    this->dataPtr->sonarCam = this->scene->CreateGpuSonar(
         this->sdf->Get<std::string>("name"), false);
 
-    if (!this->dataPtr->laserCam)
+    if (!this->dataPtr->sonarCam)
     {
-      gzerr << "Unable to create gpu laser sensor\n";
+      gzerr << "Unable to create gpu sonar sensor\n";
       return;
     }
-    this->dataPtr->laserCam->SetCaptureData(true);
+    this->dataPtr->sonarCam->SetCaptureData(true);
 
-    // initialize GpuLaser from sdf
-    if (this->dataPtr->vertRayCount == 1)
+    // initialize GpuSonar from sdf
+    // assume horizontal sweep (rotation around z axis) like cpu ray sensor
+    this->dataPtr->sonarCam->SetIsHorizontal(true);
+
+    this->dataPtr->sonarCam->SetNearClip(this->RangeMin());
+    this->dataPtr->sonarCam->SetFarClip(this->RangeMax());
+
+    // horizontal sonar setup
+    double hfov = (this->AngleMax() - this->AngleMin()).Radian();
+
+    if (hfov > 2 * M_PI)
     {
-      this->dataPtr->vertRangeCount = 1;
-      this->dataPtr->laserCam->SetIsHorizontal(true);
+      hfov = 2 * M_PI;
+      gzwarn << "Horizontal FOV for GPU sonar is capped at 180 degrees.\n";
     }
-    else
-      this->dataPtr->laserCam->SetIsHorizontal(false);
 
-    this->dataPtr->rangeCountRatio =
-      this->dataPtr->horzRangeCount / this->dataPtr->vertRangeCount;
-
-    this->dataPtr->laserCam->SetNearClip(this->RangeMin());
-    this->dataPtr->laserCam->SetFarClip(this->RangeMax());
-
-    this->dataPtr->laserCam->SetHorzFOV(
-        (this->AngleMax() - this->AngleMin()).Radian());
-    this->dataPtr->laserCam->SetVertFOV(
-        (this->VerticalAngleMax() - this->VerticalAngleMin()).Radian());
-
-    this->dataPtr->laserCam->SetHorzHalfAngle(
+    this->dataPtr->sonarCam->SetHorzHalfAngle(
       (this->AngleMax() + this->AngleMin()).Radian() / 2.0);
 
-    this->dataPtr->laserCam->SetVertHalfAngle((this->VerticalAngleMax()
-            + this->VerticalAngleMin()).Radian() / 2.0);
-
-    if (this->HorzFOV() > 2 * M_PI)
-      this->dataPtr->laserCam->SetHorzFOV(2*M_PI);
-
-    this->dataPtr->laserCam->SetCameraCount(1);
-
-    if (this->HorzFOV() > 2.8)
+    // determine number of cameras to use
+    unsigned int cameraCount;
+    if (hfov > 2.8)
     {
-      if (this->HorzFOV() > 5.6)
-        this->dataPtr->laserCam->SetCameraCount(3);
-      else
-        this->dataPtr->laserCam->SetCameraCount(2);
-    }
-
-    this->dataPtr->laserCam->SetHorzFOV(this->HorzFOV() / this->CameraCount());
-    this->dataPtr->horzRayCount /= this->CameraCount();
-
-    if (this->VertFOV() > M_PI / 2)
-    {
-      gzwarn << "Vertical FOV for block GPU laser is capped at 90 degrees.\n";
-      this->dataPtr->laserCam->SetVertFOV(M_PI / 2);
-      this->SetVerticalAngleMin(this->dataPtr->laserCam->VertHalfAngle() -
-                                (this->VertFOV() / 2));
-      this->SetVerticalAngleMax(this->dataPtr->laserCam->VertHalfAngle() +
-                                (this->VertFOV() / 2));
-    }
-
-    if ((this->dataPtr->horzRayCount * this->dataPtr->vertRayCount) <
-        (this->dataPtr->horzRangeCount * this->dataPtr->vertRangeCount))
-    {
-      this->dataPtr->horzRayCount =
-        std::max(this->dataPtr->horzRayCount, this->dataPtr->horzRangeCount);
-      this->dataPtr->vertRayCount =
-        std::max(this->dataPtr->vertRayCount, this->dataPtr->vertRangeCount);
-    }
-
-    if (this->dataPtr->laserCam->IsHorizontal())
-    {
-      if (this->dataPtr->vertRayCount > 1)
+      if (hfov > 5.6)
       {
-        this->dataPtr->laserCam->SetCosHorzFOV(
-          2 * atan(tan(this->HorzFOV()/2) / cos(this->VertFOV()/2)));
-        this->dataPtr->laserCam->SetCosVertFOV(this->VertFOV());
-        this->dataPtr->laserCam->SetRayCountRatio(
-          tan(this->CosHorzFOV()/2.0) / tan(this->VertFOV()/2.0));
-
-        if ((this->dataPtr->horzRayCount / this->RayCountRatio()) >
-            this->dataPtr->vertRayCount)
-        {
-          this->dataPtr->vertRayCount =
-            this->dataPtr->horzRayCount / this->RayCountRatio();
-        }
-        else
-        {
-          this->dataPtr->horzRayCount =
-            this->dataPtr->vertRayCount * this->RayCountRatio();
-        }
+        cameraCount = 3;
       }
       else
       {
-        this->dataPtr->laserCam->SetCosHorzFOV(this->HorzFOV());
-        this->dataPtr->laserCam->SetCosVertFOV(this->VertFOV());
+        cameraCount = 2;
       }
     }
     else
     {
-      if (this->dataPtr->horzRayCount > 1)
-      {
-        this->dataPtr->laserCam->SetCosHorzFOV(this->HorzFOV());
-        this->dataPtr->laserCam->SetCosVertFOV(
-          2 * atan(tan(this->VertFOV()/2) / cos(this->HorzFOV()/2)));
-        this->dataPtr->laserCam->SetRayCountRatio(
-          tan(this->HorzFOV()/2.0) / tan(this->CosVertFOV()/2.0));
+      cameraCount = 1;
+    }
+    this->dataPtr->sonarCam->SetCameraCount(cameraCount);
 
-        if ((this->dataPtr->horzRayCount / this->RayCountRatio()) >
-            this->dataPtr->vertRayCount)
-        {
-          this->dataPtr->vertRayCount =
-            this->dataPtr->horzRayCount / this->RayCountRatio();
-        }
-        else
-        {
-          this->dataPtr->horzRayCount = this->dataPtr->vertRayCount *
-            this->RayCountRatio();
-        }
-      }
-      else
+    // horizontal fov of single frame
+    hfov = hfov / cameraCount;
+
+    this->dataPtr->sonarCam->SetHorzFOV(hfov);
+    this->dataPtr->sonarCam->SetCosHorzFOV(hfov);
+
+    // Fixed minimum resolution of texture to reduce steps in ranges
+    // when hitting surfaces where the angle between ray and surface is small.
+    // Also have to keep in mind the GPU's max. texture size
+    unsigned int horzRangeCountPerCamera =
+        std::max(2048U, this->dataPtr->horzRangeCount / cameraCount);
+    unsigned int vertRangeCountPerCamera = this->dataPtr->vertRangeCount;
+
+    // vertical sonar setup
+    double vfov;
+
+    if (this->dataPtr->vertRayCount > 1)
+    {
+      vfov = (this->VerticalAngleMax() - this->VerticalAngleMin()).Radian();
+    }
+    else
+    {
+      vfov = 0;
+
+      if (this->VerticalAngleMax() != this->VerticalAngleMin())
       {
-        this->dataPtr->laserCam->SetCosHorzFOV(this->HorzFOV());
-        this->dataPtr->laserCam->SetCosVertFOV(this->VertFOV());
+        gzwarn << "Only one vertical ray but vertical min. and max. angle "
+            "are not equal. Min. angle is used.\n";
+        this->SetVerticalAngleMax(this->VerticalAngleMin().Radian());
       }
     }
 
-    // Initialize camera sdf for GpuLaser
+    if (vfov > M_PI / 2)
+    {
+      vfov = M_PI / 2;
+      gzwarn << "Vertical FOV for GPU sonar is capped at 90 degrees.\n";
+    }
+
+    this->dataPtr->sonarCam->SetVertFOV(vfov);
+    this->dataPtr->sonarCam->SetVertHalfAngle((this->VerticalAngleMax()
+                     + this->VerticalAngleMin()).Radian() / 2.0);
+
+    this->SetVerticalAngleMin(this->dataPtr->sonarCam->VertHalfAngle() -
+                              (vfov / 2));
+    this->SetVerticalAngleMax(this->dataPtr->sonarCam->VertHalfAngle() +
+                              (vfov / 2));
+
+    // Assume camera always stays horizontally even if vert. half angle of
+    // sonar is not 0. Add padding to camera vfov.
+    double vfovCamera = vfov + 2 * std::abs(
+        this->dataPtr->sonarCam->VertHalfAngle());
+
+    // Add padding to vertical camera FOV to cover all possible rays
+    // for given sonar vert. and horiz. FOV
+    vfovCamera = 2 * atan(tan(vfovCamera / 2) / cos(hfov / 2));
+
+    if (vfovCamera > 2.8)
+    {
+      gzerr << "Vertical FOV of internal camera exceeds 2.8 radians.\n";
+    }
+
+    this->dataPtr->sonarCam->SetCosVertFOV(vfovCamera);
+
+    // If vertical ray is not 1 adjust horizontal and vertical
+    // ray count to maintain aspect ratio
+    if (this->dataPtr->vertRayCount > 1)
+    {
+      double cameraAspectRatio = tan(hfov / 2.0) / tan(vfovCamera / 2.0);
+
+      this->dataPtr->sonarCam->SetRayCountRatio(cameraAspectRatio);
+      this->dataPtr->rangeCountRatio = cameraAspectRatio;
+
+      if ((horzRangeCountPerCamera / this->RangeCountRatio()) >
+           vertRangeCountPerCamera)
+      {
+        vertRangeCountPerCamera =
+            round(horzRangeCountPerCamera / this->RangeCountRatio());
+      }
+      else
+      {
+        horzRangeCountPerCamera =
+            round(vertRangeCountPerCamera * this->RangeCountRatio());
+      }
+    }
+    else
+    {
+      // In case of 1 vert. ray, set a very small vertical FOV for camera
+      this->dataPtr->sonarCam->SetRayCountRatio(horzRangeCountPerCamera);
+    }
+
+    // Initialize camera sdf for GpuSonar
     this->dataPtr->cameraElem.reset(new sdf::Element);
     sdf::initFile("camera.sdf", this->dataPtr->cameraElem);
 
-    this->dataPtr->cameraElem->GetElement("horizontal_fov")->Set(
-        this->CosHorzFOV());
+    this->dataPtr->cameraElem->GetElement("horizontal_fov")->Set(hfov);
 
     sdf::ElementPtr ptr = this->dataPtr->cameraElem->GetElement("image");
-    ptr->GetElement("width")->Set(this->dataPtr->horzRayCount);
-    ptr->GetElement("height")->Set(this->dataPtr->vertRayCount);
-    ptr->GetElement("format")->Set("R8G8B8");
+    ptr->GetElement("width")->Set(horzRangeCountPerCamera);
+    ptr->GetElement("height")->Set(vertRangeCountPerCamera);
+    ptr->GetElement("format")->Set("FLOAT32");
 
     ptr = this->dataPtr->cameraElem->GetElement("clip");
-    ptr->GetElement("near")->Set(this->dataPtr->laserCam->NearClip());
-    ptr->GetElement("far")->Set(this->dataPtr->laserCam->FarClip());
+    ptr->GetElement("near")->Set(this->dataPtr->sonarCam->NearClip());
+    ptr->GetElement("far")->Set(this->dataPtr->sonarCam->FarClip());
 
-    // Load camera sdf for GpuLaser
-    this->dataPtr->laserCam->Load(this->dataPtr->cameraElem);
+    // Load camera sdf for GpuSonar
+    this->dataPtr->sonarCam->Load(this->dataPtr->cameraElem);
 
-
-    // initialize GpuLaser
-    this->dataPtr->laserCam->Init();
-    this->dataPtr->laserCam->SetRangeCount(
-        this->dataPtr->horzRangeCount, this->dataPtr->vertRangeCount);
-    this->dataPtr->laserCam->SetClipDist(this->RangeMin(), this->RangeMax());
-    this->dataPtr->laserCam->CreateLaserTexture(
-        this->ScopedName() + "_RttTex_Laser");
-    this->dataPtr->laserCam->CreateRenderTexture(
+    // initialize GpuSonar
+    this->dataPtr->sonarCam->Init();
+    this->dataPtr->sonarCam->SetRangeCount(
+        this->RangeCount(),
+        this->VerticalRangeCount());
+    this->dataPtr->sonarCam->SetClipDist(this->RangeMin(), this->RangeMax());
+    this->dataPtr->sonarCam->CreateSonarTexture(
+        this->ScopedName() + "_RttTex_Sonar");
+    this->dataPtr->sonarCam->CreateRenderTexture(
         this->ScopedName() + "_RttTex_Image");
-    this->dataPtr->laserCam->SetWorldPose(this->pose);
-    this->dataPtr->laserCam->AttachToVisual(this->ParentId(), true, 0, 0);
+    this->dataPtr->sonarCam->SetWorldPose(this->pose);
+    this->dataPtr->sonarCam->AttachToVisual(this->ParentId(), true, 0, 0);
 
-    this->dataPtr->laserMsg.mutable_scan()->set_frame(this->ParentName());
+    this->dataPtr->sonarMsg.mutable_scan()->set_frame(this->ParentName());
   }
   else
     gzerr << "No world name\n";
@@ -323,137 +327,139 @@ gzwarn << "NpsBeamSensor::Init\n";
 }
 
 //////////////////////////////////////////////////
-void NpsBeamSensor::Fini()
+void GpuSonarSensor::Fini()
 {
-  if (this->scene)
-    this->scene->RemoveCamera(this->dataPtr->laserCam->Name());
-  this->scene.reset();
+  this->dataPtr->scanPub.reset();
 
-  this->dataPtr->laserCam.reset();
+  if (this->dataPtr->sonarCam)
+  {
+    this->scene->RemoveCamera(this->dataPtr->sonarCam->Name());
+  }
+
+  this->dataPtr->sonarCam.reset();
 
   Sensor::Fini();
 }
 
 //////////////////////////////////////////////////
-event::ConnectionPtr NpsBeamSensor::ConnectNewLaserFrame(
+event::ConnectionPtr GpuSonarSensor::ConnectNewSonarFrame(
   std::function<void(const float *, unsigned int, unsigned int, unsigned int,
   const std::string &)> _subscriber)
 {
-gzwarn << "NpsBeamSensor::ConnectNewLaserFrame\n";
-  return this->dataPtr->laserCam->ConnectNewLaserFrame(_subscriber);
+  return this->dataPtr->sonarCam->ConnectNewSonarFrame(_subscriber);
 }
 
 //////////////////////////////////////////////////
-unsigned int NpsBeamSensor::CameraCount() const
+unsigned int GpuSonarSensor::CameraCount() const
 {
-  return this->dataPtr->laserCam->CameraCount();
+  return this->dataPtr->sonarCam->CameraCount();
 }
 
 //////////////////////////////////////////////////
-bool NpsBeamSensor::IsHorizontal() const
+bool GpuSonarSensor::IsHorizontal() const
 {
-  return this->dataPtr->laserCam->IsHorizontal();
+  return this->dataPtr->sonarCam->IsHorizontal();
 }
 
 //////////////////////////////////////////////////
-double NpsBeamSensor::HorzFOV() const
+double GpuSonarSensor::HorzFOV() const
 {
-  return this->dataPtr->laserCam->HorzFOV();
+  return this->dataPtr->sonarCam->HorzFOV();
 }
 
 //////////////////////////////////////////////////
-double NpsBeamSensor::CosHorzFOV() const
+double GpuSonarSensor::CosHorzFOV() const
 {
-  return this->dataPtr->laserCam->CosHorzFOV();
+  return this->dataPtr->sonarCam->CosHorzFOV();
 }
 
 //////////////////////////////////////////////////
-double NpsBeamSensor::VertFOV() const
+double GpuSonarSensor::VertFOV() const
 {
-  return this->dataPtr->laserCam->VertFOV();
+  return this->dataPtr->sonarCam->VertFOV();
 }
 
 //////////////////////////////////////////////////
-double NpsBeamSensor::CosVertFOV() const
+double GpuSonarSensor::CosVertFOV() const
 {
-  return this->dataPtr->laserCam->CosVertFOV();
+  return this->dataPtr->sonarCam->CosVertFOV();
 }
 
 //////////////////////////////////////////////////
-double NpsBeamSensor::RayCountRatio() const
+double GpuSonarSensor::RayCountRatio() const
 {
-  return this->dataPtr->laserCam->RayCountRatio();
+  return this->dataPtr->sonarCam->RayCountRatio();
 }
 
 //////////////////////////////////////////////////
-double NpsBeamSensor::RangeCountRatio() const
+double GpuSonarSensor::RangeCountRatio() const
 {
   return this->dataPtr->rangeCountRatio;
 }
 
 //////////////////////////////////////////////////
-ignition::math::Angle NpsBeamSensor::AngleMin() const
+ignition::math::Angle GpuSonarSensor::AngleMin() const
 {
   return this->dataPtr->horzElem->Get<double>("min_angle");
 }
 
 //////////////////////////////////////////////////
-void NpsBeamSensor::SetAngleMin(double _angle)
+void GpuSonarSensor::SetAngleMin(double _angle)
 {
   this->dataPtr->horzElem->GetElement("min_angle")->Set(_angle);
 }
 
 //////////////////////////////////////////////////
-ignition::math::Angle NpsBeamSensor::AngleMax() const
+ignition::math::Angle GpuSonarSensor::AngleMax() const
 {
   return this->dataPtr->horzElem->Get<double>("max_angle");
 }
 
 //////////////////////////////////////////////////
-void NpsBeamSensor::SetAngleMax(double _angle)
+void GpuSonarSensor::SetAngleMax(double _angle)
 {
   this->dataPtr->horzElem->GetElement("max_angle")->Set(_angle);
 }
 
 //////////////////////////////////////////////////
-double NpsBeamSensor::RangeMin() const
+double GpuSonarSensor::RangeMin() const
 {
   return this->dataPtr->rangeElem->Get<double>("min");
 }
 
 //////////////////////////////////////////////////
-double NpsBeamSensor::RangeMax() const
+double GpuSonarSensor::RangeMax() const
 {
   return this->dataPtr->rangeElem->Get<double>("max");
 }
 
 /////////////////////////////////////////////////
-double NpsBeamSensor::AngleResolution() const
+double GpuSonarSensor::AngleResolution() const
 {
   return (this->AngleMax() - this->AngleMin()).Radian() /
     (this->RangeCount()-1);
 }
 
 //////////////////////////////////////////////////
-double NpsBeamSensor::RangeResolution() const
+double GpuSonarSensor::RangeResolution() const
 {
   return this->dataPtr->rangeElem->Get<double>("resolution");
 }
 
 //////////////////////////////////////////////////
-int NpsBeamSensor::RayCount() const
+int GpuSonarSensor::RayCount() const
 {
   return this->dataPtr->horzElem->Get<unsigned int>("samples");
 }
 
 //////////////////////////////////////////////////
-int NpsBeamSensor::RangeCount() const
+int GpuSonarSensor::RangeCount() const
 {
   return this->RayCount() * this->dataPtr->horzElem->Get<double>("resolution");
 }
 
 //////////////////////////////////////////////////
-int NpsBeamSensor::VerticalRayCount() const
+int GpuSonarSensor::VerticalRayCount() const
 {
   if (this->dataPtr->scanElem->HasElement("vertical"))
     return this->dataPtr->vertElem->Get<unsigned int>("samples");
@@ -462,7 +468,7 @@ int NpsBeamSensor::VerticalRayCount() const
 }
 
 //////////////////////////////////////////////////
-int NpsBeamSensor::VerticalRangeCount() const
+int GpuSonarSensor::VerticalRangeCount() const
 {
   if (this->dataPtr->scanElem->HasElement("vertical"))
   {
@@ -478,7 +484,7 @@ int NpsBeamSensor::VerticalRangeCount() const
 }
 
 //////////////////////////////////////////////////
-ignition::math::Angle NpsBeamSensor::VerticalAngleMin() const
+ignition::math::Angle GpuSonarSensor::VerticalAngleMin() const
 {
   if (this->dataPtr->scanElem->HasElement("vertical"))
     return this->dataPtr->vertElem->Get<double>("min_angle");
@@ -487,14 +493,14 @@ ignition::math::Angle NpsBeamSensor::VerticalAngleMin() const
 }
 
 //////////////////////////////////////////////////
-void NpsBeamSensor::SetVerticalAngleMin(const double _angle)
+void GpuSonarSensor::SetVerticalAngleMin(const double _angle)
 {
   if (this->dataPtr->scanElem->HasElement("vertical"))
     this->dataPtr->vertElem->GetElement("min_angle")->Set(_angle);
 }
 
 //////////////////////////////////////////////////
-ignition::math::Angle NpsBeamSensor::VerticalAngleMax() const
+ignition::math::Angle GpuSonarSensor::VerticalAngleMax() const
 {
   if (this->dataPtr->scanElem->HasElement("vertical"))
     return this->dataPtr->vertElem->Get<double>("max_angle");
@@ -503,104 +509,104 @@ ignition::math::Angle NpsBeamSensor::VerticalAngleMax() const
 }
 
 //////////////////////////////////////////////////
-double NpsBeamSensor::VerticalAngleResolution() const
+double GpuSonarSensor::VerticalAngleResolution() const
 {
   return (this->VerticalAngleMax() - this->VerticalAngleMin()).Radian() /
     (this->VerticalRangeCount()-1);
 }
 
 //////////////////////////////////////////////////
-void NpsBeamSensor::SetVerticalAngleMax(const double _angle)
+void GpuSonarSensor::SetVerticalAngleMax(const double _angle)
 {
   if (this->dataPtr->scanElem->HasElement("vertical"))
     this->dataPtr->vertElem->GetElement("max_angle")->Set(_angle);
 }
 
 //////////////////////////////////////////////////
-void NpsBeamSensor::Ranges(std::vector<double> &_ranges) const
+void GpuSonarSensor::Ranges(std::vector<double> &_ranges) const
 {
   std::lock_guard<std::mutex> lock(this->dataPtr->mutex);
 
-  _ranges.resize(this->dataPtr->laserMsg.scan().ranges_size());
-  memcpy(&_ranges[0], this->dataPtr->laserMsg.scan().ranges().data(),
-         sizeof(_ranges[0]) * this->dataPtr->laserMsg.scan().ranges_size());
+  _ranges.resize(this->dataPtr->sonarMsg.scan().ranges_size());
+  memcpy(&_ranges[0], this->dataPtr->sonarMsg.scan().ranges().data(),
+         sizeof(_ranges[0]) * this->dataPtr->sonarMsg.scan().ranges_size());
 }
 
 //////////////////////////////////////////////////
-double NpsBeamSensor::Range(const int _index) const
+double GpuSonarSensor::Range(const int _index) const
 {
   std::lock_guard<std::mutex> lock(this->dataPtr->mutex);
-  if (this->dataPtr->laserMsg.scan().ranges_size() == 0)
+  if (this->dataPtr->sonarMsg.scan().ranges_size() == 0)
   {
     gzwarn << "ranges not constructed yet (zero sized)\n";
     return 0.0;
   }
-  if (_index < 0 || _index > this->dataPtr->laserMsg.scan().ranges_size())
+  if (_index < 0 || _index > this->dataPtr->sonarMsg.scan().ranges_size())
   {
     gzerr << "Invalid range index[" << _index << "]\n";
     return 0.0;
   }
 
-  return this->dataPtr->laserMsg.scan().ranges(_index);
+  return this->dataPtr->sonarMsg.scan().ranges(_index);
 }
 
 //////////////////////////////////////////////////
-double NpsBeamSensor::Retro(const int /*_index*/) const
+double GpuSonarSensor::Retro(const int /*_index*/) const
 {
   return 0.0;
 }
 
 //////////////////////////////////////////////////
-int NpsBeamSensor::Fiducial(const unsigned int /*_index*/) const
+int GpuSonarSensor::Fiducial(const unsigned int /*_index*/) const
 {
   return -1;
 }
 
 //////////////////////////////////////////////////
-void NpsBeamSensor::Render()
+void GpuSonarSensor::Render()
 {
-  if (!this->dataPtr->laserCam || !this->IsActive() || !this->NeedsUpdate())
+  if (!this->dataPtr->sonarCam || !this->IsActive() || !this->NeedsUpdate())
     return;
 
   this->lastMeasurementTime = this->scene->SimTime();
 
-  this->dataPtr->laserCam->Render();
+  this->dataPtr->sonarCam->Render();
   this->dataPtr->rendered = true;
 }
 
 //////////////////////////////////////////////////
-bool NpsBeamSensor::UpdateImpl(const bool /*_force*/)
+bool GpuSonarSensor::UpdateImpl(const bool /*_force*/)
 {
-gzwarn << "NpsBeamSensor::UpdateImpl\n";
   if (!this->dataPtr->rendered)
     return false;
 
-  this->dataPtr->laserCam->PostRender();
+  this->dataPtr->sonarCam->PostRender();
 
   std::lock_guard<std::mutex> lock(this->dataPtr->mutex);
 
-  msgs::Set(this->dataPtr->laserMsg.mutable_time(),
+  msgs::Set(this->dataPtr->sonarMsg.mutable_time(),
       this->lastMeasurementTime);
 
-  msgs::LaserScan *scan = this->dataPtr->laserMsg.mutable_scan();
+  msgs::SonarScan *scan = this->dataPtr->sonarMsg.mutable_scan();
 
-  // Store the latest laser scans into laserMsg
+  // Store the latest sonar scans into sonarMsg
   msgs::Set(scan->mutable_world_pose(),
       this->pose + this->dataPtr->parentEntity->WorldPose());
   scan->set_angle_min(this->AngleMin().Radian());
   scan->set_angle_max(this->AngleMax().Radian());
   scan->set_angle_step(this->AngleResolution());
-  scan->set_count(this->RayCount());
+  scan->set_count(this->RangeCount());
 
   scan->set_vertical_angle_min(this->VerticalAngleMin().Radian());
   scan->set_vertical_angle_max(this->VerticalAngleMax().Radian());
   scan->set_vertical_angle_step(this->VerticalAngleResolution());
-  scan->set_vertical_count(this->VerticalRayCount());
+  scan->set_vertical_count(this->dataPtr->vertRangeCount);
 
-  scan->set_range_min(this->RangeMin());
-  scan->set_range_max(this->RangeMax());
+  scan->set_range_min(this->dataPtr->rangeMin);
+  scan->set_range_max(this->dataPtr->rangeMax);
 
-  const int numRays = this->RayCount() * this->VerticalRayCount();
+  const int numRays = this->dataPtr->vertRangeCount *
+    this->dataPtr->horzRangeCount;
   if (scan->ranges_size() != numRays)
   {
     // gzdbg << "Size mismatch; allocating memory\n";
@@ -613,36 +619,37 @@ gzwarn << "NpsBeamSensor::UpdateImpl\n";
     }
   }
 
-  auto dataIter = this->dataPtr->laserCam->LaserDataBegin();
-  auto dataEnd = this->dataPtr->laserCam->LaserDataEnd();
+  auto dataIter = this->dataPtr->sonarCam->SonarDataBegin();
+  auto dataEnd = this->dataPtr->sonarCam->SonarDataEnd();
   for (int i = 0; dataIter != dataEnd; ++dataIter, ++i)
   {
-    const rendering::GpuLaserData data = *dataIter;
+    const rendering::GpuSonarData data = *dataIter;
     double range = data.range;
     double intensity = data.intensity;
 
     // Mask ranges outside of min/max to +/- inf, as per REP 117
-    if (range >= this->RangeMax())
+    if (range >= this->dataPtr->rangeMax)
     {
       range = ignition::math::INF_D;
     }
-    else if (range <= this->RangeMin())
+    else if (range <= this->dataPtr->rangeMin)
     {
       range = -ignition::math::INF_D;
     }
     else if (this->noises.find(GPU_RAY_NOISE) != this->noises.end())
     {
       range = this->noises[GPU_RAY_NOISE]->Apply(range);
-      range = ignition::math::clamp(range, this->RangeMin(), this->RangeMax());
+      range = ignition::math::clamp(range,
+          this->dataPtr->rangeMin, this->dataPtr->rangeMax);
     }
 
-    range = ignition::math::isnan(range) ? this->RangeMax() : range;
+    range = ignition::math::isnan(range) ? this->dataPtr->rangeMax : range;
     scan->set_ranges(i, range);
     scan->set_intensities(i, intensity);
   }
 
   if (this->dataPtr->scanPub && this->dataPtr->scanPub->HasConnections())
-    this->dataPtr->scanPub->Publish(this->dataPtr->laserMsg);
+    this->dataPtr->scanPub->Publish(this->dataPtr->sonarMsg);
 
   this->dataPtr->rendered = false;
 
@@ -650,14 +657,14 @@ gzwarn << "NpsBeamSensor::UpdateImpl\n";
 }
 
 //////////////////////////////////////////////////
-bool NpsBeamSensor::IsActive() const
+bool GpuSonarSensor::IsActive() const
 {
   return Sensor::IsActive() ||
     (this->dataPtr->scanPub && this->dataPtr->scanPub->HasConnections());
 }
 
 //////////////////////////////////////////////////
-rendering::GpuLaserPtr NpsBeamSensor::LaserCamera() const
+rendering::GpuSonarPtr GpuSonarSensor::SonarCamera() const
 {
-  return this->dataPtr->laserCam;
+  return this->dataPtr->sonarCam;
 }

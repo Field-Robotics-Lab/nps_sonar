@@ -15,8 +15,8 @@
  *
 */
 
-#ifndef NPS_GAZEBO_ROS_BEAM_H
-#define NPS_GAZEBO_ROS_BEAM_H
+#ifndef GAZEBO_ROS_GPU_SONAR_H
+#define GAZEBO_ROS_GPU_SONAR_H
 
 #include <string>
 
@@ -34,9 +34,9 @@
 #include <gazebo/common/Plugin.hh>
 #include <gazebo/common/Events.hh>
 #include <gazebo/sensors/SensorTypes.hh>
-#include "../src_gazebo_beam/NpsBeamSensorTypes.hh"
-#include "../src_gazebo_beam/NpsBeamSensor.hh"
-#include "../src_gazebo_beam/NpsBeamPlugin.hh"
+#include "../gazebo/GpuSonarSensorTypes.hh"
+#include "../gazebo/GpuSonarSensor.hh"
+#include "../gazebo/GpuSonarPlugin.hh"
 
 #include <sdf/sdf.hh>
 
@@ -44,29 +44,29 @@
 
 namespace gazebo
 {
-  class NpsGazeboRosBeam: public NpsBeamPlugin
+  class GazeboRosGpuSonar: public GpuSonarPlugin
   {
     /// \brief Constructor
-    public: NpsGazeboRosBeam();
+    public: GazeboRosGpuSonar();
 
     /// \brief Destructor
-    public: ~NpsGazeboRosBeam();
+    public: ~GazeboRosGpuSonar();
 
     /// \brief Load the plugin
     /// \param take in SDF root element
     public: void Load(sensors::SensorPtr _parent, sdf::ElementPtr _sdf);
 
     /// \brief Keep track of number of connctions
-    private: int laser_connect_count_;
-    private: void LaserConnect();
-    private: void LaserDisconnect();
+    private: int sonar_connect_count_;
+    private: void SonarConnect();
+    private: void SonarDisconnect();
 
     // Pointer to the model
     private: std::string world_name_;
     private: physics::WorldPtr world_;
 
     /// \brief The parent sensor
-    private: sensors::NpsBeamSensorPtr parent_ray_sensor_;
+    private: sensors::GpuSonarSensorPtr parent_ray_sensor_;
 
     /// \brief pointer to ros node
     private: ros::NodeHandle* rosnode_;
@@ -92,7 +92,7 @@ namespace gazebo
     private: unsigned int seed;
 
     private: gazebo::transport::NodePtr gazebo_node_;
-    private: gazebo::transport::SubscriberPtr laser_scan_sub_;
+    private: gazebo::transport::SubscriberPtr sonar_scan_sub_;
     private: void OnScan(ConstLaserScanStampedPtr &_msg);
 
     /// \brief prevents blocking

@@ -14,8 +14,8 @@
  * limitations under the License.
  *
 */
-#ifndef NPS_BEAM_SENSOR_PRIVATE_HH
-#define NPS_BEAM_SENSOR_PRIVATE_HH
+#ifndef _GAZEBO_SENSORS_GPUSONARSENSOR_PRIVATE_HH_
+#define _GAZEBO_SENSORS_GPUSONARSENSOR_PRIVATE_HH_
 
 #include <mutex>
 #include <sdf/sdf.hh>
@@ -30,8 +30,8 @@ namespace gazebo
   namespace sensors
   {
     /// \internal
-    /// \brief NpsBeamSensor private data.
-    class NpsBeamSensorPrivate
+    /// \brief GPU Sonar sensor private data.
+    class GpuSonarSensorPrivate
     {
       /// \brief Scan SDF elementz.
       public: sdf::ElementPtr scanElem;
@@ -63,14 +63,20 @@ namespace gazebo
       /// \brief Range count ratio.
       public: double rangeCountRatio;
 
-      /// \brief GPU laser rendering.
-      public: rendering::GpuLaserPtr laserCam;
+      /// \brief The minimum range.
+      public: double rangeMin;
+
+      /// \brief The maximum range.
+      public: double rangeMax;
+
+      /// \brief GPU sonar rendering.
+      public: rendering::GpuSonarPtr sonarCam;
 
       /// \brief Mutex to protect getting ranges.
       public: std::mutex mutex;
 
-      /// \brief Laser message to publish data.
-      public: msgs::LaserScanStamped laserMsg;
+      /// \brief Sonar message to publish data.
+      public: msgs::LaserScanStamped sonarMsg;
 
       /// \brief Parent entity of gpu ray sensor
       public: physics::EntityPtr parentEntity;

@@ -21,18 +21,6 @@
    Date: 29 March 2012
  */
 
-/*
-   Desc: NpsGazeboRosGpuSingleBeamSonar plugin for simulating Sonar sensors
-   Author: Bruce Allen
-   Date: 7 May 2020
- */
-
-/*
-   Desc: NpsGazeboRosBeam plugin for simulating Sonar sensors
-   Author: Bruce Allen
-   Date: 14 May 2020
- */
-
 #include <algorithm>
 #include <string>
 #include <assert.h>
@@ -43,7 +31,7 @@
 #include <gazebo/physics/HingeJoint.hh>
 #include <gazebo/sensors/Sensor.hh>
 #include <gazebo/common/Exception.hh>
-#include "../src_gazebo_beam/NpsBeamSensor.hh"
+#include "../gazebo/GpuSonarSensor.hh"
 #include <gazebo/sensors/SensorTypes.hh>
 #include <gazebo/transport/transport.hh>
 
@@ -52,38 +40,38 @@
 
 #include <gazebo_plugins/gazebo_ros_utils.h>
 
-#include "nps_gazebo_ros_beam.h"
+#include "gazebo_ros_gpu_sonar.h"
 
 namespace gazebo
 {
 // Register this plugin with the simulator
-GZ_REGISTER_SENSOR_PLUGIN(NpsGazeboRosBeam)
+GZ_REGISTER_SENSOR_PLUGIN(GazeboRosGpuSonar)
 
 ////////////////////////////////////////////////////////////////////////////////
 // Constructor
-NpsGazeboRosBeam::NpsGazeboRosBeam()
+GazeboRosGpuSonar::GazeboRosGpuSonar()
 {
   this->seed = 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // Destructor
-NpsGazeboRosBeam::~NpsGazeboRosBeam()
+GazeboRosGpuSonar::~GazeboRosGpuSonar()
 {
-  ROS_DEBUG_STREAM_NAMED("nps_beam","Shutting down NPS Beam");
+  ROS_DEBUG_STREAM_NAMED("gpu_sonar","Shutting down Gpu Sonar");
   this->rosnode_->shutdown();
   delete this->rosnode_;
-  ROS_DEBUG_STREAM_NAMED("nps_beam","Unloaded");
+  ROS_DEBUG_STREAM_NAMED("gpu_sonar","Unloaded");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // Load the controller
-void NpsGazeboRosBeam::Load(sensors::SensorPtr _parent, sdf::ElementPtr _sdf)
+void GazeboRosGpuSonar::Load(sensors::SensorPtr _parent, sdf::ElementPtr _sdf)
 {
-std::cout << "NpsGazeboRosBeam Load\n";
+std::cout << "GazeboRosGpuSonar Load\n";
 
   // load plugin
-  NpsBeamPlugin::Load(_parent, this->sdf);
+  GpuSonarPlugin::Load(_parent, this->sdf);
   // Get the world name.
   std::string worldName = _parent->WorldName();
   this->world_ = physics::get_world(worldName);
@@ -92,16 +80,16 @@ std::cout << "NpsGazeboRosBeam Load\n";
 
   GAZEBO_SENSORS_USING_DYNAMIC_POINTER_CAST;
   this->parent_ray_sensor_ =
-    dynamic_pointer_cast<sensors::NpsBeamSensor>(_parent);
+    dynamic_pointer_cast<sensors::GpuSonarSensor>(_parent);
 
   if (!this->parent_ray_sensor_)
-    gzthrow("NpsGazeboRosBeam controller requires a NpsBeam Sensor as its parent");
+    gzthrow("GazeboRosGpuSonar controller requires a GpuSonar Sensor as its parent");
 
-  this->robot_namespace_ =  GetRobotNamespace(_parent, _sdf, "NpsBeam");
+  this->robot_namespace_ =  GetRobotNamespace(_parent, _sdf, "GpuSonar");
 
   if (!this->sdf->HasElement("frameName"))
   {
-    ROS_INFO_NAMED("nps_beam", "NpsGazeboRosBeam plugin missing <frameName>, defaults to /world");
+    ROS_INFO_NAMED("gpu_sonar", "GazeboRosGpuSonar plugin missing <frameName>, defaults to /world");
     this->frame_name_ = "/world";
   }
   else
@@ -109,33 +97,33 @@ std::cout << "NpsGazeboRosBeam Load\n";
 
   if (!this->sdf->HasElement("topicName"))
   {
-    ROS_INFO_NAMED("nps_beam", "NpsGazeboRosBeam plugin missing <topicName>, defaults to /world");
+    ROS_INFO_NAMED("gpu_sonar", "GazeboRosGpuSonar plugin missing <topicName>, defaults to /world");
     this->topic_name_ = "/world";
   }
   else
     this->topic_name_ = this->sdf->Get<std::string>("topicName");
 
-  this->laser_connect_count_ = 0;
+  this->sonar_connect_count_ = 0;
 
 
   // Make sure the ROS node for Gazebo has already been initialized
   if (!ros::isInitialized())
   {
-    ROS_FATAL_STREAM_NAMED("nps_beam", "A ROS node for Gazebo has not been initialized, unable to load plugin. "
+    ROS_FATAL_STREAM_NAMED("gpu_sonar", "A ROS node for Gazebo has not been initialized, unable to load plugin. "
       << "Load the Gazebo system plugin 'libgazebo_ros_api_plugin.so' in the gazebo_ros package)");
     return;
   }
 
-  ROS_INFO_NAMED("nps_beam", "Starting NpsGazeboRosBeam Plugin (ns = %s)", this->robot_namespace_.c_str() );
+  ROS_INFO_NAMED("gpu_sonar", "Starting GazeboRosGpuSonar Plugin (ns = %s)", this->robot_namespace_.c_str() );
   // ros callback queue for processing subscription
   this->deferred_load_thread_ = boost::thread(
-    boost::bind(&NpsGazeboRosBeam::LoadThread, this));
+    boost::bind(&GazeboRosGpuSonar::LoadThread, this));
 
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // Load the controller
-void NpsGazeboRosBeam::LoadThread()
+void GazeboRosGpuSonar::LoadThread()
 {
   this->gazebo_node_ = gazebo::transport::NodePtr(new gazebo::transport::Node());
   this->gazebo_node_->Init(this->world_name_);
@@ -149,7 +137,7 @@ void NpsGazeboRosBeam::LoadThread()
       this->tf_prefix_ = this->robot_namespace_;
       boost::trim_right_if(this->tf_prefix_,boost::is_any_of("/"));
   }
-  ROS_INFO_NAMED("nps_beam", "NPS Beam Plugin (ns = %s) <tf_prefix_>, set to \"%s\"",
+  ROS_INFO_NAMED("gpu_sonar", "NPS Beam Plugin (ns = %s) <tf_prefix_>, set to \"%s\"",
              this->robot_namespace_.c_str(), this->tf_prefix_.c_str());
 
   // resolve tf prefix
@@ -160,8 +148,8 @@ void NpsGazeboRosBeam::LoadThread()
     ros::AdvertiseOptions ao =
       ros::AdvertiseOptions::create<sensor_msgs::LaserScan>(
       this->topic_name_, 1,
-      boost::bind(&NpsGazeboRosBeam::LaserConnect, this),
-      boost::bind(&NpsGazeboRosBeam::LaserDisconnect, this),
+      boost::bind(&GazeboRosGpuSonar::SonarConnect, this),
+      boost::bind(&GazeboRosGpuSonar::SonarDisconnect, this),
       ros::VoidPtr(), NULL);
     this->pub_ = this->rosnode_->advertise(ao);
     this->pub_queue_ = this->pmq.addPub<sensor_msgs::LaserScan>();
@@ -172,85 +160,85 @@ void NpsGazeboRosBeam::LoadThread()
   // sensor generation off by default
   this->parent_ray_sensor_->SetActive(false);
 
-  ROS_INFO_STREAM_NAMED("nps_beam","LoadThread function completed");
+  ROS_INFO_STREAM_NAMED("gpu_sonar","LoadThread function completed");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // Increment count
-void NpsGazeboRosBeam::LaserConnect()
+void GazeboRosGpuSonar::SonarConnect()
 {
-  this->laser_connect_count_++;
-  if (this->laser_connect_count_ == 1)
-    this->laser_scan_sub_ =
+  this->sonar_connect_count_++;
+  if (this->sonar_connect_count_ == 1)
+    this->sonar_scan_sub_ =
       this->gazebo_node_->Subscribe(this->parent_ray_sensor_->Topic(),
-                                    &NpsGazeboRosBeam::OnScan, this);
+                                    &GazeboRosGpuSonar::OnScan, this);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // Decrement count
-void NpsGazeboRosBeam::LaserDisconnect()
+void GazeboRosGpuSonar::SonarDisconnect()
 {
-  this->laser_connect_count_--;
-  if (this->laser_connect_count_ == 0)
-    this->laser_scan_sub_.reset();
+  this->sonar_connect_count_--;
+  if (this->sonar_connect_count_ == 0)
+    this->sonar_scan_sub_.reset();
 }
 
-/* original code copies Gazebo _msg to ROS laser_msg and publishes 
+/* original code copies Gazebo _msg to ROS sonar_msg and publishes 
 ////////////////////////////////////////////////////////////////////////////////
 // Convert new Gazebo message to ROS message and publish it
-void NpsGazeboRosBeam::OnScan(ConstLaserScanStampedPtr &_msg)
+void GazeboRosGpuSonar::OnScan(ConstLaserScanStampedPtr &_msg)
 {
   // We got a new message from the Gazebo sensor.  Stuff a
   // corresponding ROS message and publish it.
-  sensor_msgs::LaserScan laser_msg;
-  laser_msg.header.stamp = ros::Time(_msg->time().sec(), _msg->time().nsec());
-  laser_msg.header.frame_id = this->frame_name_;
-  laser_msg.angle_min = _msg->scan().angle_min();
-  laser_msg.angle_max = _msg->scan().angle_max();
-  laser_msg.angle_increment = _msg->scan().angle_step();
-  laser_msg.time_increment = 0;  // instantaneous simulator scan
-  laser_msg.scan_time = 0;  // not sure whether this is correct
-  laser_msg.range_min = _msg->scan().range_min();
-  laser_msg.range_max = _msg->scan().range_max();
-  laser_msg.ranges.resize(_msg->scan().ranges_size());
+  sensor_msgs::SonarScan sonar_msg;
+  sonar_msg.header.stamp = ros::Time(_msg->time().sec(), _msg->time().nsec());
+  sonar_msg.header.frame_id = this->frame_name_;
+  sonar_msg.angle_min = _msg->scan().angle_min();
+  sonar_msg.angle_max = _msg->scan().angle_max();
+  sonar_msg.angle_increment = _msg->scan().angle_step();
+  sonar_msg.time_increment = 0;  // instantaneous simulator scan
+  sonar_msg.scan_time = 0;  // not sure whether this is correct
+  sonar_msg.range_min = _msg->scan().range_min();
+  sonar_msg.range_max = _msg->scan().range_max();
+  sonar_msg.ranges.resize(_msg->scan().ranges_size());
   std::copy(_msg->scan().ranges().begin(),
             _msg->scan().ranges().end(),
-            laser_msg.ranges.begin());
-  laser_msg.intensities.resize(_msg->scan().intensities_size());
+            sonar_msg.ranges.begin());
+  sonar_msg.intensities.resize(_msg->scan().intensities_size());
   std::copy(_msg->scan().intensities().begin(),
             _msg->scan().intensities().end(),
-            laser_msg.intensities.begin());
-  this->pub_queue_->push(laser_msg, this->pub_);
+            sonar_msg.intensities.begin());
+  this->pub_queue_->push(sonar_msg, this->pub_);
 }
 */
 
-/* NPS code copies much of Gazebo _msg to ROS laser_msg but only returns
+/* NPS code copies much of Gazebo _msg to ROS sonar_msg but only returns
    one processed range and intensity value.
 */
 ////////////////////////////////////////////////////////////////////////////////
 // Convert new Gazebo message to ROS message and publish it
-void NpsGazeboRosBeam::OnScan(ConstLaserScanStampedPtr &_msg)
+void GazeboRosGpuSonar::OnScan(ConstLaserScanStampedPtr &_msg)
 {
   // We got a new message from the Gazebo sensor.  Stuff a
   // corresponding ROS message and publish it.
-  sensor_msgs::LaserScan laser_msg;
-  laser_msg.header.stamp = ros::Time(_msg->time().sec(), _msg->time().nsec());
-  laser_msg.header.frame_id = this->frame_name_;
-  laser_msg.angle_min = _msg->scan().angle_min();
-  laser_msg.angle_max = _msg->scan().angle_max();
-  laser_msg.angle_increment = _msg->scan().angle_step();
-  laser_msg.time_increment = 0;  // instantaneous simulator scan
-  laser_msg.scan_time = 0;  // not sure whether this is correct
-  laser_msg.range_min = _msg->scan().range_min();
-  laser_msg.range_max = _msg->scan().range_max();
+  sensor_msgs::LaserScan sonar_msg;
+  sonar_msg.header.stamp = ros::Time(_msg->time().sec(), _msg->time().nsec());
+  sonar_msg.header.frame_id = this->frame_name_;
+  sonar_msg.angle_min = _msg->scan().angle_min();
+  sonar_msg.angle_max = _msg->scan().angle_max();
+  sonar_msg.angle_increment = _msg->scan().angle_step();
+  sonar_msg.time_increment = 0;  // instantaneous simulator scan
+  sonar_msg.scan_time = 0;  // not sure whether this is correct
+  sonar_msg.range_min = _msg->scan().range_min();
+  sonar_msg.range_max = _msg->scan().range_max();
 
   // ROS output message size is 1
-  laser_msg.ranges.resize(0);
-  laser_msg.intensities.resize(0);
+  sonar_msg.ranges.resize(0);
+  sonar_msg.intensities.resize(0);
 
   // calculate range and intensity from Gazebo array
-  float angle = laser_msg.angle_min;
-  float increment = laser_msg.angle_increment;
+  float angle = sonar_msg.angle_min;
+  float increment = sonar_msg.angle_increment;
   float intensity = 0.0;
   float intensity_ref = 2.6e-16;
   float absorption = 5e-5;
@@ -258,7 +246,7 @@ void NpsGazeboRosBeam::OnScan(ConstLaserScanStampedPtr &_msg)
   float source_level = 120.0;
   float transmission_loss = 0.0;
   float target_strength = 10.0;
-  float range = laser_msg.range_max - laser_msg.range_min;
+  float range = sonar_msg.range_max - sonar_msg.range_min;
   auto range_it = _msg->scan().ranges().begin();
   auto intensity_it = _msg->scan().intensities().begin();
   while (range_it != _msg->scan().ranges().end())
@@ -291,11 +279,11 @@ void NpsGazeboRosBeam::OnScan(ConstLaserScanStampedPtr &_msg)
   }
 
   // store calculated range and intensity
-  laser_msg.ranges.push_back(range);
-  laser_msg.intensities.push_back(intensity);
+  sonar_msg.ranges.push_back(range);
+  sonar_msg.intensities.push_back(intensity);
 
   // publish
-  this->pub_queue_->push(laser_msg, this->pub_);
+  this->pub_queue_->push(sonar_msg, this->pub_);
 }
 }
 

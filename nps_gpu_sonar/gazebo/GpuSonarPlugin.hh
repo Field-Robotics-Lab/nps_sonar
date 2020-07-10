@@ -15,8 +15,8 @@
  *
 */
 
-#ifndef NPS_BEAM_PLUGIN_HH
-#define NPS_BEAM_PLUGIN_HH
+#ifndef _GAZEBO_GPU_SONAR_PLUGIN_HH_
+#define _GAZEBO_GPU_SONAR_PLUGIN_HH_
 
 #include <string>
 
@@ -24,25 +24,28 @@
 #include "gazebo/sensors/CameraSensor.hh"
 #include "gazebo/rendering/RenderTypes.hh"
 #include "gazebo/util/system.hh"
-#include "NpsBeamSensorTypes.hh"
+
+#include "GpuSonarSensorTypes.hh"
 
 namespace gazebo
 {
-  class GAZEBO_VISIBLE NpsBeamPlugin : public SensorPlugin
+  class GAZEBO_VISIBLE GpuSonarPlugin : public SensorPlugin
   {
-    public: NpsBeamPlugin();
+    public: GpuSonarPlugin();
+
+    public: virtual ~GpuSonarPlugin();
 
     public: void Load(sensors::SensorPtr _sensor, sdf::ElementPtr _sdf);
 
-    public: virtual void OnNewLaserFrame(const float *_image,
+    public: virtual void OnNewSonarFrame(const float *_image,
                 unsigned int _width, unsigned int _height,
                 unsigned int _depth, const std::string &_format);
 
     protected: unsigned int width, height/*, depth*/;
 
-    protected: sensors::NpsBeamSensorPtr parentSensor;
+    protected: sensors::GpuSonarSensorPtr parentSensor;
 
-    private: event::ConnectionPtr newLaserFrameConnection;
+    private: event::ConnectionPtr newSonarFrameConnection;
   };
 }
 #endif

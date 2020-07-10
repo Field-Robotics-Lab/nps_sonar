@@ -15,35 +15,44 @@
  *
 */
 #include <functional>
-#include "NpsBeamPlugin.hh"
-#include "NpsBeamSensor.hh"
+//#include "plugins/GpuSonarPlugin.hh"
+#include "GpuSonarPlugin.hh"
+//#include "gazebo/sensors/GpuSonarSensor.hh"
+#include "GpuSonarSensor.hh"
 
 using namespace gazebo;
+GZ_REGISTER_SENSOR_PLUGIN(GpuSonarPlugin)
 
 /////////////////////////////////////////////////
-NpsBeamPlugin::NpsBeamPlugin()
+GpuSonarPlugin::GpuSonarPlugin()
 : SensorPlugin(), width(0), height(0)
 {
 }
 
 /////////////////////////////////////////////////
-void NpsBeamPlugin::Load(sensors::SensorPtr _sensor,
+GpuSonarPlugin::~GpuSonarPlugin()
+{
+  this->newSonarFrameConnection.reset();
+}
+
+/////////////////////////////////////////////////
+void GpuSonarPlugin::Load(sensors::SensorPtr _sensor,
                               sdf::ElementPtr /*_sdf*/)
 {
   this->parentSensor =
-    std::dynamic_pointer_cast<sensors::NpsBeamSensor>(_sensor);
+    std::dynamic_pointer_cast<sensors::GpuSonarSensor>(_sensor);
 
   if (!this->parentSensor)
   {
-    gzerr << "NpsBeamPlugin not attached to a NpsBeam sensor\n";
+    gzerr << "GpuSonarPlugin not attached to a GpuSonar sensor\n";
     return;
   }
 
   this->width = this->parentSensor->RangeCount();
   this->height = this->parentSensor->VerticalRangeCount();
 
-  this->newLaserFrameConnection = this->parentSensor->ConnectNewLaserFrame(
-      std::bind(&NpsBeamPlugin::OnNewLaserFrame, this,
+  this->newSonarFrameConnection = this->parentSensor->ConnectNewSonarFrame(
+      std::bind(&GpuSonarPlugin::OnNewSonarFrame, this,
         std::placeholders::_1, std::placeholders::_2, std::placeholders::_3,
         std::placeholders::_4, std::placeholders::_5));
 
@@ -51,7 +60,7 @@ void NpsBeamPlugin::Load(sensors::SensorPtr _sensor,
 }
 
 /////////////////////////////////////////////////
-void NpsBeamPlugin::OnNewLaserFrame(const float * /*_image*/,
+void GpuSonarPlugin::OnNewSonarFrame(const float * /*_image*/,
     unsigned int /*_width*/, unsigned int /*_height*/,
     unsigned int /*_depth*/, const std::string &/*_format*/)
 {

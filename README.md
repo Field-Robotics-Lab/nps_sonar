@@ -1,11 +1,7 @@
 # nps_sonar
-Gazebo ROS Sonar plugin
+NPS GPU Sonar.  Components include:
 
-Clone with:
-
-    git clone https://github.com/Field-Robotics-Lab/nps_sonar.git
-
-Developers who prefer using RSA keys to authenticate:
-
-    git clone git@github.com:Field-Robotics-Lab/nps_sonar.git
+* GPU Beam Plugin
+* GPU Beam Sensor
+* GPU Beam Sensor ROS component
 

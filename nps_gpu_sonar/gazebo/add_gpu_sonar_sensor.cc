@@ -1,6 +1,6 @@
 /*
 Gazebo does not have plugins for dynamically adding sensor types
-such as "beam".  Gazebo statically adds its own sensor types such
+such as "gpu_sonar".  Gazebo statically adds its own sensor types such
 as "gpu_ray" by defining hooks in them using "GZ_REGISTER_STATIC_SENSOR"
 and then calling these hooks to instantiate their class.  Gazebo
 stores the sensor type name and the instantiated class object in a Map.
@@ -20,15 +20,15 @@ plugin to run by providing parameter "-s <libsystem_plugin_name.so>".
 #include <gazebo/sensors/SensorFactory.hh> // for diagnostic
 #include <gazebo/gazebo.hh>
 
-extern void RegisterNpsBeamSensor();
+extern void RegisterGpuSonarSensor();
 
 namespace gazebo {
 
-class AddNpsBeamSensor : public SystemPlugin {
+class AddGpuSonarSensor : public SystemPlugin {
 
     public: void Load(int _argc, char** _argv) {
-        gzdbg <<"Adding NpsBeamSensor" << std::endl;
-        RegisterNpsBeamSensor();
+        gzdbg <<"Adding GpuSonarSensor" << std::endl;
+        RegisterGpuSonarSensor();
 
         // diagnostic
         std::vector<std::string> types;
@@ -41,7 +41,7 @@ class AddNpsBeamSensor : public SystemPlugin {
 };
 
 // Register this plugin with the simulator
-GZ_REGISTER_SYSTEM_PLUGIN(AddNpsBeamSensor);
+GZ_REGISTER_SYSTEM_PLUGIN(AddGpuSonarSensor);
 
 };
 
